@@ -5,16 +5,56 @@ from pygame.locals import *
 clock = pygame.time.Clock()
 BLACK = (0,0,0)
 WHITE = (255, 255, 255)
+BLUE = (0, 0, 255)
+PALE_GREEN = (117,217,143)
 WINDOW_SIZE = (400,400)
 
 class Player():
     def __init__(self, player_location, player_y_momentum, player_image):
         self.player_location = player_location
         self.player_y_momentum = player_y_momentum
-        self.player_image = player_image
-        self.player_image = player_image = pygame.transform.scale(self.player_image, (self.player_image.get_width() * 5, self.player_image.get_height() * 5))
+        #self.player_image = player_image
+        self.can_teleport = False
+        self.player_image = pygame.transform.scale(player_image, (player_image.get_width() * 3, player_image.get_height() * 3))
         self.player_rect = pygame.Rect(self.player_location[0], self.player_location[1], self.player_image.get_width(), self.player_image.get_height())
     
+class Mushroom():
+    def __init__(self):
+        self.mush_rect = pygame.Rect(random.randrange(24, WINDOW_SIZE[0] - 24), random.randrange(
+            int(WINDOW_SIZE[1] / 4) - 24, int(WINDOW_SIZE[1] * 3/4) - 24), 24, 24)
+        
+        
+class Red_Mushroom(Mushroom):
+    def __init__(self):
+        super().__init__()
+        self.mush_image = pygame.image.load("red_mushroom.png").convert_alpha()
+        self.mush_image = pygame.transform.scale(
+            self.mush_image, (self.mush_image.get_width() * 3, self.mush_image.get_height() * 3))
+        self.mush_type = "red"
+        self.mush_value = 3
+
+class Brown_Mushroom(Mushroom):
+    def __init__(self):
+        super().__init__()
+        self.mush_image = pygame.image.load("mushroom.png").convert_alpha()
+        self.mush_image = pygame.transform.scale(
+            self.mush_image, (self.mush_image.get_width() * 3, self.mush_image.get_height() * 3))
+        self.mush_type = "brown"
+        self.mush_value = 1
+
+class Portal():
+    def __init__(self, portal_location):
+        self.portal_image = pygame.image.load("portal.png").convert_alpha()
+        self.portal_image = pygame.transform.scale(
+            self.portal_image, (self.portal_image.get_width() * 1.5, self.portal_image.get_height() * 1.5))
+        self.portal_location = portal_location
+        self.is_active = False
+        self.portal_rect = pygame.Rect(0,0,0,0)
+    
+    def spawn_portal(self, screen):
+        self.portal_rect = pygame.Rect(self.portal_location[0], self.portal_location[1], self.portal_image.get_width()
+            / 2, self.portal_image.get_height() / 2)
+        screen.blit(self.portal_image, (self.portal_rect[0], self.portal_rect[1]))
 
 def game_over(screen):
     while True:
@@ -32,20 +72,6 @@ def game_over(screen):
         gameover = font.render("you died", 1, (0, 0, 0))
         screen.blit(gameover, (0, 200))
         pygame.display.update()
-
-
-def spawn_platform(platform, screen, color):
-    pygame.draw.rect(screen, color, platform)
-
-def new_platform(player, platforms):
-    #lower_bound = int(WINDOW_SIZE[1] - player.player_location[1])
-    
-    upper_bound = WINDOW_SIZE[1]
-    x_value = random.randrange(50, WINDOW_SIZE[0] - 50)
-    y_value = (platforms[-1][1]) - 50
-    platform = pygame.Rect(x_value, y_value, 50, 10)
-    platforms.append(platform)
-
 
 
 def main():
@@ -71,6 +97,7 @@ def main():
     timer = 3 #time
     dt = 0
     yum_timer = 0
+    portal_timer = 0
     
 
     prev_time = time.time()
@@ -80,16 +107,12 @@ def main():
     p_moving = False #move the platforms
 
     
-    platform_rect = pygame.Rect(200, 300, 50, 10) #platforms
-    platform2_rect = pygame.Rect(80, 200, 50, 10)
-    platforms = [platform_rect, platform2_rect]
-
-    mushroom_image = pygame.image.load('mushroom.png').convert_alpha() #mushrooms
-    mushroom_image = pygame.transform.scale(mushroom_image, (mushroom_image.get_width() * 3, mushroom_image.get_height() * 3))
+    platform_rect = pygame.Rect(50, 350, 300, 10) #platforms
+    
     mushrooms = []
-    for i in range(3):
-        mush_rect = pygame.Rect(random.randrange(mushroom_image.get_width(), WINDOW_SIZE[0] - mushroom_image.get_width()), random.randrange(mushroom_image.get_height(), WINDOW_SIZE[1] - mushroom_image.get_height()), mushroom_image.get_width(), mushroom_image.get_height())
-        mushrooms.append(mush_rect)
+    red_count = 0
+
+    portals = [Portal([0,0]), Portal([0,0])]
 
     while True:
         clock.tick(60)
@@ -100,9 +123,11 @@ def main():
         if is_dead == True:
             game_over(screen)
         #initial things to do
-        screen.fill(WHITE)
+        screen.fill(PALE_GREEN)
         timer -= dt
-        score_display = score_font.render("Score: " + str(score), 1, (0, 0, 0))
+        score_display = score_font.render("Score: " + str(score), 1, WHITE)
+        fps_display = score_font.render(str(clock.get_fps()), 1, WHITE)
+        screen.blit(fps_display, (WINDOW_SIZE[0] - 50, 0))
 
         #movement code
         if moving_left == True:
@@ -130,43 +155,56 @@ def main():
 
         #mushroom spawn and collisions
         if timer <= 0:
-            mush_rect = pygame.Rect(random.randrange(mushroom_image.get_width(), WINDOW_SIZE[0] - mushroom_image.get_width()), random.randrange(int(WINDOW_SIZE[1] / 4) - mushroom_image.get_height(), int(WINDOW_SIZE[1] * 3/4) - mushroom_image.get_height()), mushroom_image.get_width(), mushroom_image.get_height())
-            mushrooms.append(mush_rect)
+            if red_count < 3:
+                mushrooms.append(Brown_Mushroom())
+                red_count += 1
+            else:
+                mushrooms.append(Red_Mushroom())
+                red_count = 0
             timer = 3
-        for location in mushrooms:
-            if(pig.player_rect.colliderect(location)):
-                mushrooms.remove(location)
-                score += 1
+        for mushroom in mushrooms:
+            if(pig.player_rect.colliderect(mushroom.mush_rect)):
+                mushrooms.remove(mushroom)
+                score += mushroom.mush_value
                 yum_timer = .5
                 yum_location = (random.randrange(0, WINDOW_SIZE[0]), random.randrange(0, WINDOW_SIZE[1]))
-            screen.blit(mushroom_image, (location[0], location[1]))
+            screen.blit(mushroom.mush_image, (mushroom.mush_rect[0], mushroom.mush_rect[1]))
 
         #draw platforms on collision
-        for platform in platforms:
-            if pig.player_rect.colliderect(platform) and pig.player_y_momentum > 0:
-                spawn_platform(platform, screen, (0, 255, 0))
-                pig.player_y_momentum = -300
-                p_moving = True
-            else:
-                spawn_platform(platform, screen, (0, 0, 0))
+        #for platform in platforms:
+        pygame.draw.rect(screen, BLACK, platform_rect)
+        if pig.player_rect.colliderect(platform_rect) and pig.player_y_momentum > 0:
+            pig.player_y_momentum = -425
             
         if p_moving == True:
             if pig.player_y_momentum > 0:
                 p_moving = False
-            for platform in platforms:
-                    pygame.Rect.move_ip(platform, 0, 1 * abs(pig.player_y_momentum * dt))
+    
+        #portals
+        if portal_timer > 0:
+            pig.can_teleport = False
+        else:
+            pig.can_teleport = True
+        portal_timer -= dt
 
-        for platform in platforms:
-            if platform.bottom > WINDOW_SIZE[1]:
-                platforms.remove(platform)
+        for count, portal in enumerate(portals):
+            if portal.is_active:
+                portal.spawn_portal(screen)
+            if pig.player_rect.colliderect(portal.portal_rect) and pig.can_teleport:
+                if count == 0:
+                    if portals[count + 1].is_active:
+                        pig.player_location[0] = portals[count + 1].portal_location[0]
+                        pig.player_location[1] = portals[count +
+                                                         1].portal_location[1]
+                elif count == 1:
+                    if portals[count - 1].is_active:
+                        pig.player_location[0] = portals[count -
+                                                         1].portal_location[0]
+                        pig.player_location[1] = portals[count -
+                                                         1].portal_location[1]
+                pig.can_teleport = False
+                portal_timer = 1
 
-        while len(platforms) < 3:
-            new_platform(pig, platforms)
-
-
-        #if pig.player_location[1] < (WINDOW_SIZE[1] / 2):
-                    
-            #pig.player_y_momentum = 0
 
         
         #gravity/vertical momentum and death from falling off the bottom
@@ -196,6 +234,15 @@ def main():
                 if event.key == K_ESCAPE:
                     pygame.quit()
                     sys.exit()
+                if event.key == K_SPACE:
+                    for portal in portals:
+                        if portal.is_active == False:
+                            portal.portal_location[0] = pig.player_location[0]
+                            portal.portal_location[1] = pig.player_location[1]
+                            portal.is_active = True
+                            pig.can_teleport = False
+                            portal_timer = 1
+                            break
             if event.type == KEYUP:
                 if event.key == K_RIGHT:
                     moving_right = False
